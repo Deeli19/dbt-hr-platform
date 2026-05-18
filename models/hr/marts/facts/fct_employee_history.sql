@@ -19,7 +19,6 @@ history_enriched as (
         dbt_valid_from as effective_start_date,
         dbt_valid_to as effective_end_date,
         
-        -- add comment for slimci testing - please ignore
 
         datediff(
             'day',

@@ -89,13 +89,6 @@ jobs:
           name: manifest-artifact
           path: state/
 
-      - name: Normalize manifest location
-        if: github.event_name == 'pull_request'
-
-        run: |
-          find state/
-          cp state/manifest-artifact/manifest.json state/manifest.json
-
       - name: Verify downloaded manifest
         if: github.event_name == 'pull_request'
 
