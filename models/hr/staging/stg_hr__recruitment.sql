@@ -15,7 +15,7 @@ renamed as (
         lower(trim(first_name)) as first_name,
         lower(trim(last_name)) as last_name,
 
-        -- emails
+        -- email
         lower(trim(email)) as email,
 
         -- dates
