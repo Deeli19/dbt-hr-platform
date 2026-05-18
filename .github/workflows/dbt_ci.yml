@@ -84,16 +84,24 @@ jobs:
         uses: dawidd6/action-download-artifact@v3
 
         with:
-          workflow: dbt_ci.yml
+          workflow: dbt CI
           branch: main
           name: manifest-artifact
           path: state/
+
+      - name: Normalize manifest location
+        if: github.event_name == 'pull_request'
+
+        run: |
+          find state/
+          cp state/manifest-artifact/manifest.json state/manifest.json
 
       - name: Verify downloaded manifest
         if: github.event_name == 'pull_request'
 
         run: |
           ls -R state/
+          test -f state/manifest.json
 
       # ---------------------------------------------------
       # Show modified nodes
