@@ -47,6 +47,9 @@ models:
       - name: employee_email
         data_type: varchar
         description: Employee corporate email address.
+        tests:
+          - not_null:
+              severity: warn
 
       - name: employee_status_group
         data_type: varchar

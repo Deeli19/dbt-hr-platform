@@ -1,0 +1,1 @@
+--captures anomalies in employee history data, such as unexpected status changes, missing records, or overlapping effective dates.

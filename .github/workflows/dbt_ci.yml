@@ -4,15 +4,19 @@ on:
   push:
     branches:
       - main
+
   pull_request:
     branches:
       - main
 
 jobs:
+
   dbt-ci:
+
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repo
         uses: actions/checkout@v4
 
@@ -21,11 +25,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dbt
+      - name: Install Python dependencies
         run: |
-          pip install dbt-snowflake
+          pip install -r requirements.txt
 
-      - name: Install dependencies
+      - name: Install dbt dependencies
         run: |
           dbt deps
 
@@ -58,10 +62,103 @@ jobs:
 
           ls -la /home/runner/.dbt
 
-      - name: Validate project (parse)
+      - name: Validate dbt connection
+        run: |
+          dbt debug
+
+      - name: Parse dbt project
         run: |
           dbt parse
 
-      - name: Run tests
+      - name: Compile dbt project
         run: |
-          dbt test
+          dbt compile
+
+      # ---------------------------------------------------
+      # Download previous manifest for Slim CI comparison
+      # ---------------------------------------------------
+
+      - name: Download previous manifest
+        if: github.event_name == 'pull_request'
+
+        uses: dawidd6/action-download-artifact@v3
+
+        with:
+          workflow: dbt_ci.yml
+          branch: main
+          name: manifest-artifact
+          path: state/
+
+      - name: Verify downloaded manifest
+        if: github.event_name == 'pull_request'
+
+        run: |
+          ls -R state/
+
+      # ---------------------------------------------------
+      # Show modified nodes
+      # ---------------------------------------------------
+
+      - name: Show modified nodes
+        if: github.event_name == 'pull_request'
+
+        run: |
+          dbt ls \
+            --select state:modified+ \
+            --state state/
+
+      # ---------------------------------------------------
+      # Slim CI for pull requests
+      # ---------------------------------------------------
+
+      - name: Run Slim CI tests
+        if: github.event_name == 'pull_request'
+
+        run: |
+          dbt test \
+            --select state:modified+ \
+            --state state/ \
+            --exclude tag:skip_ci
+
+      - name: Run Slim CI build
+        if: github.event_name == 'pull_request'
+
+        run: |
+          dbt build \
+            --select state:modified+ \
+            --state state/ \
+            --exclude tag:skip_ci
+
+      # ---------------------------------------------------
+      # Full build on main branch
+      # ---------------------------------------------------
+
+      - name: Full production-style build
+        if: github.ref == 'refs/heads/main'
+
+        run: |
+          dbt build --exclude tag:skip_ci
+
+      # ---------------------------------------------------
+      # Upload current manifest artifact
+      # ---------------------------------------------------
+
+      - name: Upload manifest artifact
+        if: github.ref == 'refs/heads/main'
+
+        uses: actions/upload-artifact@v4
+
+        with:
+          name: manifest-artifact
+          path: target/manifest.json
+
+      # ---------------------------------------------------
+      # Upload dbt artifacts
+      # ---------------------------------------------------
+
+      - name: Upload dbt artifacts
+        uses: actions/upload-artifact@v4
+
+        with:
+          name: dbt-artifacts
+          path: target/
