@@ -32,8 +32,8 @@ renamed as (
 
         -- metadata
         current_timestamp as _loaded_at
-        
-        -- added comment for slimci testing
+
+        -- added comment for slimci testing - please ignore
     from source
 
 )
