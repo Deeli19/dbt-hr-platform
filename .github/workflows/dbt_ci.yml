@@ -94,6 +94,7 @@ jobs:
 
         run: |
           ls -R state/
+          test -f state/manifest.json
 
       # ---------------------------------------------------
       # Show modified nodes

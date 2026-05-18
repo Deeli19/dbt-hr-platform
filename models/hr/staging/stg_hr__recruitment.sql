@@ -33,7 +33,6 @@ renamed as (
         -- metadata
         current_timestamp as _loaded_at
 
-        -- add any additional transformations or derived fields as needed
     from source
 
 )

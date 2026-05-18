@@ -18,6 +18,7 @@ history_enriched as (
         supervisor,
         dbt_valid_from as effective_start_date,
         dbt_valid_to as effective_end_date,
+        
 
         datediff(
             'day',
