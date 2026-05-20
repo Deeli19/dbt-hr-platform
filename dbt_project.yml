@@ -36,12 +36,15 @@ seeds:
 
 models:
   dbt_hr_project:
-    hr:
-      +schema: dbt_agbadeyan
       staging:
+        +schema: hr_staging
         +materialized: view
 
+      intermediate:
+        +materialized: ephemeral
+
       marts:
+        +schema: hr_marts
         +materialized: table
 
 snapshots:
