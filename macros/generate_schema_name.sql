@@ -1,36 +1,14 @@
-{% macro generate_schema_name(custom_schema_name, node) %}
+{% macro generate_schema_name(custom_schema_name, node) -%}
 
-    {%- set base_schema = target.schema -%}
-    {%- set parts = node.fqn -%}
+    {%- set default_schema = target.schema -%}
+    {%- if custom_schema_name is none -%}
 
-    {# correct for your structure: models/hr/staging/model.sql #}
-    {%- set domain = parts[1] if parts | length > 1 else 'shared' -%}
-    {%- set layer  = parts[2] if parts | length > 2 else '' -%}
-
-    {%- set layers = ['staging', 'intermediate', 'marts', 'core', 'analytics'] -%}
-
-    {%- if target.name == 'dev' -%}
-
-        {%- if layer in layers -%}
-            {{ base_schema ~ '_' ~ domain ~ '_' ~ layer }}
-        {%- else -%}
-            {{ base_schema ~ '_' ~ domain }}
-        {%- endif -%}
-
-    {%- elif target.name == 'prod' -%}
-
-        {%- if custom_schema_name is not none -%}
-            {{ custom_schema_name }}
-        {%- elif layer in layers -%}
-            {{ domain ~ '_' ~ layer }}
-        {%- else -%}
-            {{ domain }}
-        {%- endif -%}
+        {{ default_schema }}
 
     {%- else -%}
 
-        {{ base_schema }}
+        {{ default_schema }}_{{ custom_schema_name | trim }}
 
     {%- endif -%}
 
-{% endmacro %}
+{%- endmacro %}
