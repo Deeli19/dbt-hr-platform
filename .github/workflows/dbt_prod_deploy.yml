@@ -1,0 +1,77 @@
+name: dbt Production Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+
+  dbt-prod:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: dbt deps
+        run: |
+          dbt deps
+
+      - name: Setup Production Profile
+        run: |
+          mkdir -p ~/.dbt
+
+          printf '%s' "${{ secrets.PROD_PRIVATE_KEY_PATH }}" > ~/.dbt/rsa_key.p8
+
+          chmod 600 ~/.dbt/rsa_key.p8
+
+          cat > ~/.dbt/profiles.yml <<EOF
+          default:
+            target: prod
+
+            outputs:
+
+              prod:
+                type: snowflake
+                account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+                user: ${{ secrets.PROD_USER }}
+                role: ${{ secrets.PROD_ROLE }}
+                warehouse: PROD_WH
+                database: PRODUCTION
+                schema: HR
+                threads: 8
+                private_key_path: ~/.dbt/rsa_key.p8
+                private_key_passphrase: "${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}"
+          EOF
+
+      - name: Validate connection
+        run: |
+          dbt debug --target prod
+
+      - name: Run production build
+        run: |
+          dbt build --target prod
+
+      - name: Run source freshness
+        run: |
+          dbt source freshness --target prod
+
+      - name: Compile
+        run: dbt compile --target prod
+
+      - name: Upload manifest
+        uses: actions/upload-artifact@v4
+
+        with:
+          name: manifest-artifact
+          path: target/manifest.json

@@ -1,10 +1,6 @@
 name: dbt CI
 
 on:
-  push:
-    branches:
-      - main
-
   pull_request:
     branches:
       - main
@@ -33,30 +29,30 @@ jobs:
         run: |
           dbt deps
 
-      - name: Setup dbt profile and Snowflake key
+      - name: Setup CI profiles
         run: |
           mkdir -p /home/runner/.dbt
 
-          printf '%s' "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /home/runner/.dbt/rsa_key.p8
+          printf '%s' "${{ secrets.CI_PRIVATE_KEY_PATH }}" > /home/runner/.dbt/rsa_key_machine.p8
 
-          chmod 600 /home/runner/.dbt/rsa_key.p8
+          chmod 600 /home/runner/.dbt/rsa_key_machine.p8
 
           cat > /home/runner/.dbt/profiles.yml <<EOF
           default:
-            target: dev
+            target: ci
 
             outputs:
-              dev:
+              ci:
                 type: snowflake
                 account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-                user: ${{ secrets.SNOWFLAKE_USER }}
-                role: ${{ secrets.SNOWFLAKE_ROLE }}
-                warehouse: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-                database: ${{ secrets.SNOWFLAKE_DATABASE }}
-                schema: ${{ secrets.SNOWFLAKE_SCHEMA }}
+                user: ${{ secrets.CI_USER }}
+                role: ${{ secrets.CI_ROLE }}
+                warehouse: ${{ secrets.CI_WAREHOUSE }}
+                database: CI
+                schema: DBT_CI
                 threads: 4
                 authenticator: snowflake
-                private_key_path: /home/runner/.dbt/rsa_key.p8
+                private_key_path: /home/runner/.dbt/rsa_key_machine.p8
                 private_key_passphrase: "${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}"
           EOF
 
@@ -84,14 +80,12 @@ jobs:
         uses: dawidd6/action-download-artifact@v3
 
         with:
-          workflow: dbt_ci.yml
+          workflow: dbt_prod_deploy.yml
           branch: main
           name: manifest-artifact
           path: state/
 
       - name: Verify downloaded manifest
-        if: github.event_name == 'pull_request'
-
         run: |
           ls -R state/
           test -f state/manifest.json
@@ -101,8 +95,6 @@ jobs:
       # ---------------------------------------------------
 
       - name: Show modified nodes
-        if: github.event_name == 'pull_request'
-
         run: |
           dbt ls \
             --select state:modified+ \
@@ -113,8 +105,6 @@ jobs:
       # ---------------------------------------------------
 
       - name: Run Slim CI tests
-        if: github.event_name == 'pull_request'
-
         run: |
           dbt test \
             --select state:modified+ \
@@ -122,36 +112,11 @@ jobs:
             --exclude tag:skip_ci
 
       - name: Run Slim CI build
-        if: github.event_name == 'pull_request'
-
         run: |
           dbt build \
             --select state:modified+ \
             --state state/ \
             --exclude tag:skip_ci
-
-      # ---------------------------------------------------
-      # Full build on main branch
-      # ---------------------------------------------------
-
-      - name: Full production-style build
-        if: github.ref == 'refs/heads/main'
-
-        run: |
-          dbt build --exclude tag:skip_ci
-
-      # ---------------------------------------------------
-      # Upload current manifest artifact
-      # ---------------------------------------------------
-
-      - name: Upload manifest artifact
-        if: github.ref == 'refs/heads/main'
-
-        uses: actions/upload-artifact@v4
-
-        with:
-          name: manifest-artifact
-          path: target/manifest.json
 
       # ---------------------------------------------------
       # Upload dbt artifacts
