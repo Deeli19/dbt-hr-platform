@@ -104,13 +104,6 @@ jobs:
       # Slim CI for pull requests
       # ---------------------------------------------------
 
-      - name: Run Slim CI tests
-        run: |
-          dbt test \
-            --select state:modified+ \
-            --state state/ \
-            --exclude tag:skip_ci
-
       - name: Run Slim CI build
         run: |
           dbt build \
