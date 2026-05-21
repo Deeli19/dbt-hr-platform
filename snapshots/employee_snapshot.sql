@@ -2,7 +2,6 @@
 
 {{
     config(
-        target_database='analytics',
         target_schema='snapshots',
         unique_key='employee_id',
 

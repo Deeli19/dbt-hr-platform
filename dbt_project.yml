@@ -49,7 +49,6 @@ models:
 
 snapshots:
   dbt_hr_project:
-    +target_database: analytics
     +target_schema: snapshots
 
 vars:
