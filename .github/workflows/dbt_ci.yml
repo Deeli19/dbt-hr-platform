@@ -80,7 +80,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v3
 
         with:
-          workflow: dbt_prod_deploy.yml
+          workflow: dbt_ci.yml
           branch: main
           name: manifest-artifact
           path: state/
