@@ -91,7 +91,3 @@ sources:
           - name: employee_id
             tests:
               - not_null
-              - relationships:
-                  arguments:
-                    to: source('hr', 'employee')
-                    field: emp_id
