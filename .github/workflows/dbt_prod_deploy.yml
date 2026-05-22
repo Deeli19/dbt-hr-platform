@@ -29,13 +29,13 @@ jobs:
 
       - name: Setup Production Profile
         run: |
-          mkdir -p ~/.dbt
+          mkdir -p /home/runner/.dbt
 
-          printf '%s' "${{ secrets.PROD_PRIVATE_KEY_PATH }}" > ~/.dbt/rsa_key.p8
+          printf '%s' "${{ secrets.PROD_PRIVATE_KEY_PATH }}" > /home/runner/.dbt/rsa_key.p8
 
-          chmod 600 ~/.dbt/rsa_key.p8
+          chmod 600 /home/runner/.dbt/rsa_key.p8
 
-          cat > ~/.dbt/profiles.yml <<EOF
+          cat > /home/runner/.dbt/profiles.yml <<EOF
           default:
             target: prod
 
@@ -50,7 +50,7 @@ jobs:
                 database: PRODUCTION
                 schema: HR
                 threads: 8
-                private_key_path: ~/.dbt/rsa_key.p8
+                private_key_path: /home/runner/.dbt/rsa_key.p8
                 private_key_passphrase: "${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}"
           EOF
 
