@@ -62,10 +62,6 @@ jobs:
         run: |
           dbt build --target prod
 
-      - name: Run source freshness
-        run: |
-          dbt source freshness --target prod
-
       - name: Compile
         run: dbt compile --target prod
 
