@@ -1,0 +1,87 @@
+semantic_models:
+  - name: employee_current
+    model: ref('dim_employee_current')
+
+    entities:
+      - name: employee
+        type: primary
+        expr: employee_id
+    
+    dimensions:
+      - name: employee_start_date
+        type: time
+        type_params:
+          time_granularity: day
+      
+      - name: is_rehire
+        type: categorical
+ 
+
+  - name: employee_history
+    model: ref('fct_employee_history')
+
+    entities:
+      - name: employee_history
+        type: primary
+        expr: employee_history_id
+
+      - name: employee
+        type: foreign
+        expr: employee_id
+
+    dimensions:
+      - name: effective_start_date
+        type: time
+        type_params:
+          time_granularity: day
+      
+      - name: effective_end_date
+        type: time
+        type_params:
+          time_granularity: day
+
+      - name: department
+        type: categorical
+
+      - name: employee_change_type
+        type: categorical
+
+      - name: is_current_record
+        type: categorical
+
+
+    measures:
+
+    # employee states
+      - name: employee_state_records
+        agg: count_distinct
+        expr: employee_history_id
+        agg_time_dimension: effective_start_date
+
+    # active employee
+      - name: active_employees
+        agg: count_distinct
+        expr: case when is_current_record then employee_id end
+        agg_time_dimension: effective_start_date
+
+    # duration in state
+      - name: total_days_in_state
+        agg: sum
+        expr: days_in_state
+        agg_time_dimension: effective_start_date
+
+    # average state duration
+      - name: avg_days_in_state
+        agg: average
+        expr: days_in_state
+        agg_time_dimension: effective_start_date
+
+
+metrics:
+  - name: active_headcount
+    label: Active Headcount
+    type: simple
+
+    type_params:
+      measure:
+        name: active_employees

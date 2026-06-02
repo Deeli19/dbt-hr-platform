@@ -62,7 +62,7 @@ renamed as (
         end as is_active_employee,
 
         case
-            when employee_status_group = 'terminated' then 1 else 0
+            when employee_status_group = 'terminated' then true else false
         end as is_terminated_employee,
 
         -- metadata

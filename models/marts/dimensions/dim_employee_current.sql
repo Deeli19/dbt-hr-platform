@@ -39,7 +39,12 @@ employee_enriched as (
         e.employment_start_date,
         e.employment_exit_date,
         e.is_active_employee,
-        e.is_terminated_employee
+        e.is_terminated_employee,
+
+        -- counts number of employment records tied to the same canonical employee identity
+        count(*) over (
+            partition by canonical_employee_id
+        ) as total_employment_periods
 
     from employee e
     inner join employee_identity ei
@@ -47,35 +52,17 @@ employee_enriched as (
 
 ),
 
-employment_metrics as (
-
-    select
-        *,
-
-        -- counts number of employment records tied to the same canonical employee identity
-        count(*) over (
-            partition by canonical_employee_id
-        ) as employment_record_count,
-
-        -- employee tenure in days
-        {{calculate_tenure_days('employment_start_date', 'employment_exit_date') }} as tenure_days
-
-    from employee_enriched
-
-),
-
 final as (
 
     select
         *,
-
         -- heuristic rehire flag. Assumes multiple employee records means rehire. Often true but not always.
         case
-            when employment_record_count > 1 then true
+            when total_employment_periods > 1 then true
             else false
         end as is_rehire
 
-    from employment_metrics
+    from employee_enriched
 
 )
 
