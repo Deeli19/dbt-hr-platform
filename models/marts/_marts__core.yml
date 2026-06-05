@@ -80,42 +80,6 @@ models:
         data_type: boolean
         description: Heuristic flag identifying employees with multiple employment records.
 
-  - name: dim_date
-
-    description: >
-      Calendar date dimension used across HR analytical fact models for
-      standardized temporal analysis and date-based reporting.
-
-      Grain: one row per calendar date.
-
-    config:
-      contract:
-        enforced: false
-
-      meta:
-        owner_team: workforce_analytics
-        domain: shared_dimensions
-
-      tags:
-        - shared_dimension
-        - calendar
-        - date_dimension
-
-    columns:
-
-      - name: date_key
-        data_type: integer
-        description: Surrogate integer date key in YYYYMMDD format.
-        tests:
-          - not_null
-          - unique
-
-      - name: calendar_date
-        data_type: date
-        description: Canonical calendar date.
-        tests:
-          - not_null
-          - unique
 
   - name: fct_employee_history
 

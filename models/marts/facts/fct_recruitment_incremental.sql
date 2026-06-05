@@ -44,9 +44,9 @@ final as (
         desired_salary,
 
         case
-            when application_status = 'Offered' then 1
-            else 0
-        end as hired_flag,
+            when application_status = 'Offered' then true
+            else false
+        end as is_hired,
         
         current_timestamp() as dbt_updated_at,
         'dbt_incremental_merge' as record_source
