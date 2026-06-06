@@ -1,0 +1,163 @@
+version: 2
+
+models:
+
+  - name: int_employee_status_changes
+
+    description: >
+      Historical employee workforce fact table capturing employee attribute
+      changes over time using dbt snapshot validity windows.
+
+      Each row represents a distinct employee state interval across
+      organizational, supervisory, and employment attributes.
+
+      Optimized for:
+      - workforce movement analysis
+      - historical headcount reporting
+      - promotions and transfers
+      - organizational evolution analysis
+      - tenure trend reporting
+      - employee lifecycle analytics
+
+      Grain: one row per employee per historical state period.
+
+    config:
+      contract:
+        enforced: false
+
+      meta:
+        owner_team: workforce_analytics
+        domain: hr
+        historical_tracking: true
+        pii_contains_sensitive_employee_data: false
+
+    columns:
+
+      - name: employee_history_id
+        data_type: varchar
+        description: Surrogate key uniquely identifying each employee historical state period.
+        tests:
+          - not_null
+          - unique
+
+      - name: employee_id
+        data_type: varchar
+        description: Unique identifier for employee.
+
+      - name: effective_start_date
+        data_type: timestamp_ntz
+        description: Timestamp when employee state became active.
+        tests:
+          - not_null
+
+      - name: effective_end_date
+        data_type: timestamp_ntz
+        description: Timestamp when employee state expired.
+
+      - name: employee_status
+        data_type: varchar
+        description: Historical employee status during the validity period.
+
+      - name: title
+        data_type: varchar
+        description: Historical employee title during the validity period.
+
+      - name: division
+        data_type: varchar
+        description: Historical employee organizational division.
+
+      - name: supervisor
+        data_type: varchar
+        description: Historical employee reporting manager.
+
+      - name: days_in_state
+        data_type: integer
+        description: Number of days employee remained in the historical state period.
+
+      - name: is_current_record
+        data_type: boolean
+        description: Indicates whether record represents the employee's current active state.
+
+      - name: employee_change_types
+        data_type: array(varchar)
+        description: >
+          Array of workforce attribute transition types that occurred between historical employee records.
+          Captures all detected changes in employee status, title, division, and supervisor to provide a comprehensive view of workforce movements and state transitions, including multiple simultaneous attribute changes during state transitions.
+
+  - name: int_employee_current
+
+    description: >
+      Current-state employee dimension table containing one active record
+      per employee. Serves as the canonical workforce dimension used for
+      operational reporting, workforce planning, organizational analysis,
+      and employee headcount reporting.
+
+      Grain: one row per current employee record.
+
+    config:
+      contract:
+        enforced: false
+
+      meta:
+        owner_team: workforce_analytics
+        domain: hr
+        pii_contains_sensitive_employee_data: false
+
+      tags:
+        - hr
+        - dimension
+        - current_state
+        - workforce
+
+    columns:
+
+      - name: employee_id
+        data_type: varchar
+        description: Unique identifier for each employee.
+        tests:
+          - not_null
+          - unique
+
+      - name: canonical_employee_id
+        data_type: varchar
+        description: Canonical employee identity used to group rehires and multiple employment records.
+
+      - name: employee_full_name
+        data_type: varchar
+        description: Concatenated employee first and last name.
+
+      - name: employee_email
+        data_type: varchar
+        description: Employee corporate email address.
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+      - name: employee_status_group
+        data_type: varchar
+        description: Current workforce employment status grouping.
+
+      - name: division
+        data_type: varchar
+        description: Current employee organizational division.
+
+      - name: department_type
+        data_type: varchar
+        description: Current employee department classification.
+
+      - name: employment_start_date
+        data_type: date
+        description: Employee hire/start date.
+
+      - name: employment_exit_date
+        data_type: date
+        description: Employee termination or exit date if applicable.
+
+      - name: is_active_employee
+        data_type: boolean
+        description: Indicates whether employee is currently active.
+
+      - name: is_rehire
+        data_type: boolean
+        description: Heuristic flag identifying employees with multiple employment records.

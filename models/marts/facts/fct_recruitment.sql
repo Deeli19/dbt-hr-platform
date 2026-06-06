@@ -17,9 +17,9 @@ with recruitment as (
 
     select * from {{ ref('stg_hr__recruitment') }}
 
-        {% if is_incremental() %}
+    {% if is_incremental() %}
 
-        where application_date > 
+        where application_date >
             dateadd(
                 days, 
                 -3,

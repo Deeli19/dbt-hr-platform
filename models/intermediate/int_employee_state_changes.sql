@@ -1,3 +1,9 @@
+{{ warn_deprecated_model(
+    'int_employee_status_changes_v1',
+    'int_employee_status_changes_v2'
+) }}
+
+
 with employee_history as (
     
     select * from {{ ref('employee_snapshot') }}
@@ -18,7 +24,6 @@ history_enriched as (
         supervisor,
         dbt_valid_from as effective_start_date,
         dbt_valid_to as effective_end_date,
-        
 
         datediff(
             'day',
@@ -64,30 +69,6 @@ history_with_previous_state as (
         ) as previous_supervisor
 
     from history_enriched
-),
-
-final as (
-
-    select *,
-
-        case
-
-            when previous_employee_status is null then 'initial_record'
-            
-            {{detect_attribute_change([
-                ('employee_status', 'employee_status_change'),
-                ('title', 'title_change'),
-                ('division', 'division_transfer'),
-                ('department_type', 'department_type_change'),
-                ('supervisor', 'supervisor_change')
-            ]) }} -- detects the first attribute change in the specified order of precedence. If multiple attributes change on the same day, only the first detected change will be captured in this field. This is to simplify analysis of change types, but can be adjusted based on specific business requirements.
-
-            else 'attribute_change'
-
-        end as employee_change_type -- employee_change_type captures the first detected. If multiple attributes change on the same day, only the first detected change will be captured in this field. This is to simplify analysis of change types, but can be adjusted based on specific business requirements.
-
-    from history_with_previous_state
-
 )
 
-select * from final
+select * from history_with_previous_state
