@@ -1,12 +1,12 @@
 with employee as (
 
-    select * from {{ ref('dim_employee_current') }}
+    select * from {{ ref('int_employee_current_state') }}
 
 ),
 
 recruitment as (
 
-    select * from {{ ref('fct_recruitment_incremental') }}
+    select * from {{ ref('fct_recruitment') }}
 
 ),
 
@@ -44,7 +44,7 @@ recruitment_kpis as (
 
         count(*) as total_applications,
 
-        sum(hired_flag) as total_hires,
+        sum(case when is_hired = 1 then 1 else 0 end) as total_hires,
 
         avg(desired_salary) as avg_desired_salary
 

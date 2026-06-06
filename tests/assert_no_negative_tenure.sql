@@ -1,5 +1,5 @@
 select
     employee_id
-from {{ ref('dim_employee_current') }}
+from {{ ref('int_employee_current_state') }}
 where is_active_employee = true
 and employment_exit_date is not null

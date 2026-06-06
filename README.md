@@ -1,4 +1,4 @@
-# HR Analytics Engineering Platform (dbt + Snowflake + Prefect)
+# HR Analytics Engineering Platform (dbt + Snowflake + GitHub Actions)
 
 ## Overview
 
@@ -42,9 +42,7 @@ Snapshots (SCD2 employee history)
         ↓
 Dimensions & Facts (star schema)
         ↓
-Analytics Marts (KPIs, trends, attrition)
-        ↓
-Orchestration (Prefect)
+Analytics Marts (KPIs, trends)
         ↓
 CI/CD (GitHub Actions)
 ```
@@ -81,18 +79,23 @@ generally be preferred for scalability and maintainability.
 
 **Dimensions**
 
-* `dim_employee`
+* `dim_active_employee`
+* `dim_inactive_employee`
 * `dim_date`
 
 **Facts**
 
+* `fct_employee_events`
+* `fct_employee_monthly_archive`
+* `fct_employee_workforce_monthly`
+* `fct_engagement_survey`
 * `fct_recruitment`
 * `fct_training`
-* `fct_engagement`
+
 
 ---
 
-## Analytics Marts
+## Analyses Marts
 
 Built business-facing models including:
 
@@ -125,21 +128,6 @@ careful state management.
 
 ---
 
-## Orchestration (Prefect)
-
-A lightweight pipeline orchestrates:
-
-* dbt seed
-* dbt snapshot
-* dbt build
-* dbt docs generation
-
-```bash
-python orchestration/prefect_hr_pipeline.py
-```
-
----
-
 ## Data Quality & Governance
 
 Implemented dbt tests:
@@ -163,7 +151,7 @@ GitHub Actions pipeline:
 
   * dbt deps
   * dbt parse
-  * dbt test
+  * dbt build
 
 Prevents broken models from being merged.
 

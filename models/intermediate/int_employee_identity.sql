@@ -13,14 +13,7 @@ with employee as (
 
 identity_resolution as (
 
-    select
-
-        employee_id,
-
-        email,
-
-        first_name,
-        last_name,
+    select *,
 
         min(employee_id) over (
             partition by lower(email)
@@ -30,6 +23,4 @@ identity_resolution as (
 
 )
 
-select *
-
-from identity_resolution
+select * from identity_resolution

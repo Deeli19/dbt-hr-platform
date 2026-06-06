@@ -1,6 +1,6 @@
-with employee as (
+with inactive_employee as (
 
-    select * from {{ ref('dim_employee_current') }}
+    select * from {{ ref('dim_inactive_employees') }}
 
 ),
 
@@ -8,7 +8,7 @@ terminated_employees as (
 
     select *
 
-    from employee
+    from inactive_employee
 
     where is_terminated_employee = 1
 
@@ -31,6 +31,4 @@ final as (
 
 )
 
-select *
-
-from final
+select * from final

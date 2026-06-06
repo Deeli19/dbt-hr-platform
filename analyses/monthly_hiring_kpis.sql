@@ -1,6 +1,6 @@
 with recruitment as (
 
-    select * from {{ ref('fct_recruitment_incremental') }}
+    select * from {{ ref('fct_recruitment') }}
 
 ),
 

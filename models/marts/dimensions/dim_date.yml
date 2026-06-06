@@ -1,0 +1,26 @@
+ models:
+  - name: dim_date
+    description: >
+      Calendar date dimension used across HR analytical fact models for
+      standardized temporal analysis and date-based reporting.
+
+      Grain: one row per calendar date.
+    time_spine:
+      standard_granularity_column: calendar_date
+
+    columns:
+
+      - name: date_key
+        data_type: integer
+        description: Surrogate integer date key in YYYYMMDD format.
+        tests:
+          - not_null
+          - unique
+
+      - name: calendar_date
+        data_type: date
+        description: Canonical calendar date.
+        granularity: day
+        tests:
+          - not_null
+          - unique

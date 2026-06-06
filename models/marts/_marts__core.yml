@@ -2,265 +2,81 @@ version: 2
 
 models:
 
-  - name: dim_employee_current
+  - name: fct_employee_events
+    description: Employee lifecycle events
 
-    description: >
-      Current-state employee dimension table containing one active record
-      per employee. Serves as the canonical workforce dimension used for
-      operational reporting, workforce planning, organizational analysis,
-      and employee headcount reporting.
+  - name: fct_employee_workforce_monthly
+    description: Monthly workforce metrics
 
-      Grain: one row per current employee record.
+semantic_models:
 
-    config:
-      contract:
-        enforced: false
+  - name: employee_events
 
-      meta:
-        owner_team: workforce_analytics
-        domain: hr
-        pii_contains_sensitive_employee_data: false
+    model: ref('fct_employee_events')
 
-      tags:
-        - hr
-        - dimension
-        - current_state
-        - workforce
+    defaults:
+      agg_time_dimension: event_date
 
-    columns:
+    entities:
+      - name: employee
+        type: primary
+        expr: employee_id
 
-      - name: employee_id
-        data_type: varchar
-        description: Unique identifier for each employee.
-        tests:
-          - not_null
-          - unique
+    dimensions:
+      - name: event_date
+        type: time
+        type_params:
+          time_granularity: day
 
-      - name: canonical_employee_id
-        data_type: varchar
-        description: Canonical employee identity used to group rehires and multiple employment records.
-
-      - name: employee_full_name
-        data_type: varchar
-        description: Concatenated employee first and last name.
-
-      - name: employee_email
-        data_type: varchar
-        description: Employee corporate email address.
-        tests:
-          - not_null:
-              config:
-                severity: warn
-
-      - name: employee_status_group
-        data_type: varchar
-        description: Current workforce employment status grouping.
+      - name: event_type
+        type: categorical
 
       - name: division
-        data_type: varchar
-        description: Current employee organizational division.
+        type: categorical
 
       - name: department_type
-        data_type: varchar
-        description: Current employee department classification.
+        type: categorical
 
-      - name: employment_start_date
-        data_type: date
-        description: Employee hire/start date.
+    measures:
+      - name: event_count
+        agg: count
+        expr: 1
 
-      - name: employment_exit_date
-        data_type: date
-        description: Employee termination or exit date if applicable.
+  - name: workforce_monthly
 
-      - name: is_active_employee
-        data_type: boolean
-        description: Indicates whether employee is currently active.
+    model: ref('fct_employee_workforce_monthly')
 
-      - name: is_rehire
-        data_type: boolean
-        description: Heuristic flag identifying employees with multiple employment records.
+    defaults:
+      agg_time_dimension: metric_month
 
-  - name: dim_date
+    entities:
+      - name: workforce_month
+        type: primary
+        expr: metric_month
 
-    description: >
-      Calendar date dimension used across HR analytical fact models for
-      standardized temporal analysis and date-based reporting.
+    dimensions:
+      - name: metric_month
+        type: time
+        type_params:
+          time_granularity: month
 
-      Grain: one row per calendar date.
+    measures:
+      - name: hires
+        agg: sum
 
-    config:
-      contract:
-        enforced: false
+      - name: terminations
+        agg: sum
 
-      meta:
-        owner_team: workforce_analytics
-        domain: shared_dimensions
+metrics:
 
-      tags:
-        - shared_dimension
-        - calendar
-        - date_dimension
+  - name: monthly_hires
+    label: Monthly Hires
+    type: simple
+    type_params:
+      measure: hires
 
-    columns:
-
-      - name: date_key
-        data_type: integer
-        description: Surrogate integer date key in YYYYMMDD format.
-        tests:
-          - not_null
-          - unique
-
-      - name: calendar_date
-        data_type: date
-        description: Canonical calendar date.
-        tests:
-          - not_null
-          - unique
-
-  - name: fct_employee_history
-
-    description: >
-      Historical employee workforce fact table capturing employee attribute
-      changes over time using dbt snapshot validity windows.
-
-      Each row represents a distinct employee state interval across
-      organizational, supervisory, and employment attributes.
-
-      Optimized for:
-      - workforce movement analysis
-      - historical headcount reporting
-      - promotions and transfers
-      - organizational evolution analysis
-      - tenure trend reporting
-      - employee lifecycle analytics
-
-      Grain: one row per employee per historical state period.
-
-    config:
-      contract:
-        enforced: false
-
-      meta:
-        owner_team: workforce_analytics
-        domain: hr
-        historical_tracking: true
-        pii_contains_sensitive_employee_data: false
-
-      tags:
-        - hr
-        - fact
-        - historical
-        - snapshot_derived
-        - workforce
-
-    columns:
-
-      - name: employee_history_id
-        data_type: varchar
-        description: Surrogate key uniquely identifying each employee historical state period.
-        tests:
-          - not_null
-          - unique
-
-      - name: employee_id
-        data_type: varchar
-        description: Unique identifier for employee.
-
-      - name: effective_start_date
-        data_type: timestamp_ntz
-        description: Timestamp when employee state became active.
-        tests:
-          - not_null
-
-      - name: effective_end_date
-        data_type: timestamp_ntz
-        description: Timestamp when employee state expired.
-
-      - name: employee_status
-        data_type: varchar
-        description: Historical employee status during the validity period.
-
-      - name: title
-        data_type: varchar
-        description: Historical employee title during the validity period.
-
-      - name: division
-        data_type: varchar
-        description: Historical employee organizational division.
-
-      - name: supervisor
-        data_type: varchar
-        description: Historical employee reporting manager.
-
-      - name: days_in_state
-        data_type: integer
-        description: Number of days employee remained in the historical state period.
-
-      - name: is_current_record
-        data_type: boolean
-        description: Indicates whether record represents the employee's current active state.
-
-      - name: employee_change_type
-        data_type: varchar
-        description: >
-          Categorizes the first detected workforce attribute transition
-          between historical employee records.
-
-  - name: fct_recruitment_incremental
-
-    description: >
-      Incremental recruitment lifecycle fact model capturing applicant
-      application activity and hiring pipeline events.
-
-      Grain: one row per applicant application.
-
-      This model is materialized incrementally to:
-      - reduce warehouse compute cost
-      - improve runtime performance
-      - support scalable recruitment event ingestion
-
-      Incremental Strategy:
-      - Snowflake merge incremental strategy
-      - 3-day late-arriving lookback window
-      - update-aware processing for changed recruitment records
-
-      Assumptions:
-      - application_date is reliably populated by the source system
-      - applicant_id is unique across source loads
-      - late-arriving records typically arrive within 3 days
-
-    config:
-      contract:
-        enforced: false
-
-      meta:
-        owner_team: talent_analytics
-        domain: recruitment
-        incremental_model: true
-        late_arriving_strategy: three_day_lookback
-
-      tags:
-        - hr
-        - recruitment
-        - incremental
-        - fact
-        - hiring_pipeline
-
-    columns:
-
-      - name: applicant_id
-        data_type: varchar
-        description: Unique identifier for each applicant application.
-        tests:
-          - not_null
-          - unique
-
-      - name: application_date
-        data_type: date
-        description: Date applicant submitted application.
-        tests:
-          - not_null
-          - relationships:
-              arguments:
-                to: ref('dim_date')
-                field: calendar_date
+  - name: monthly_terminations
+    label: Monthly Terminations
+    type: simple
+    type_params:
+      measure: terminations
