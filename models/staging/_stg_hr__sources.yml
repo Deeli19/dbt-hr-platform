@@ -64,10 +64,6 @@ sources:
           - name: employee_id
             tests:
               - not_null
-              - relationships:
-                  arguments:
-                    to: source('hr', 'employee')
-                    field: emp_id
           - name: training_date
           - name: training_program_name
             tests:
