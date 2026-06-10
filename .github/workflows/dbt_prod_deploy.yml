@@ -3,6 +3,13 @@ name: dbt Production Deploy
 on:
   schedule:
     - cron: 0 0 1 * *
+  workflow_dispatch: 
+    inputs:
+      branch_name: 
+        description: 
+        required: true
+        default: 'main'
+        type: string
 
 jobs:
 
