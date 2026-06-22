@@ -1,9 +1,3 @@
-{{ warn_deprecated_model(
-    'int_employee_status_changes_v1',
-    'int_employee_status_changes_v2'
-) }}
-
-
 with employee_history as (
     
     select * from {{ ref('employee_snapshot') }}

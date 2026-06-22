@@ -3,7 +3,7 @@ version: 2
 sources:
   - name: hr
     database: raw
-    schema: hr
+    schema: DBT_AGBADEYAN_HR
 
     tables:
       - name: employee

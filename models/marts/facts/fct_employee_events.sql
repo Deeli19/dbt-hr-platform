@@ -1,21 +1,64 @@
--- Grain: 1 row per employee event (hire, termination, title change, etc.)
+-- Grain: 1 row per employee attribute change event. 
+-- Initial events are ignored since they represent the initial state of the employee rather than a change event.
+
+{% set tracked_attributes = [
+    {
+        "event_type": "employee_status_change",
+        "attribute": "employee_status",
+        "previous": "previous_employee_status",
+        "current": "employee_status"
+    },
+    {
+        "event_type": "title_change",
+        "attribute": "title",
+        "previous": "previous_title",
+        "current": "title"
+    },
+    {
+        "event_type": "division_transfer",
+        "attribute": "division",
+        "previous": "previous_division",
+        "current": "division"
+    },
+    {
+        "event_type": "department_type_change",
+        "attribute": "department_type",
+        "previous": "previous_department_type",
+        "current": "department_type"
+    },
+    {
+        "event_type": "supervisor_change",
+        "attribute": "supervisor",
+        "previous": "previous_supervisor",
+        "current": "supervisor"
+    }
+] %}
 
 with employee_changes as (
 
     select *
 
     from {{ ref('int_employee_state_changes') }}
+    -- consider rows where we have a previous state (ignores initial load rows)
+    where
+        previous_employee_status is not null
+        or previous_title is not null
+        or previous_division is not null
+        or previous_department_type is not null
+        or previous_supervisor is not null
 
 ),
 
-initial_hire_events as (
+employee_attribute_changes as (
+
+    {% for attr in tracked_attributes %}
 
     select
 
         {{ dbt_utils.generate_surrogate_key([
             'employee_id',
             'effective_start_date',
-            "'hire_event'"
+            "'" ~ attr.event_type ~ "'"
         ]) }} as employee_event_id,
 
         employee_id,
@@ -24,195 +67,26 @@ initial_hire_events as (
         effective_start_date as event_timestamp,
         cast(effective_start_date as date) as event_date,
 
-        'hire_event' as event_type,
+        '{{ attr.event_type }}' as event_type,
 
-        null as previous_value,
-        employee_status as new_value,
+        {{ attr.previous }} as previous_value,
+        {{ attr.current }} as new_value,
 
-        'employee_status' as changed_attribute
-
-    from employee_changes
-
-    where previous_employee_status is null
-
-),
-
-employee_status_events as (
-
-    select
-
-        {{ dbt_utils.generate_surrogate_key([
-            'employee_id',
-            'effective_start_date',
-            "'employee_status_change'"
-        ]) }} as employee_event_id,
-
-        employee_id,
-        employee_history_id,
-
-        effective_start_date as event_timestamp,
-        cast(effective_start_date as date) as event_date,
-
-        'employee_status_change' as event_type,
-
-        previous_employee_status as previous_value,
-        employee_status as new_value,
-
-        'employee_status' as changed_attribute
+        '{{ attr.attribute }}' as changed_attribute
 
     from employee_changes
 
-    where coalesce(previous_employee_status, 'unknown')
-        != coalesce(employee_status, 'unknown')
+    where coalesce({{ attr.previous }}, 'unknown')
+        != coalesce({{ attr.current }}, 'unknown')
 
-),
-
-title_change_events as (
-
-    select
-
-        {{ dbt_utils.generate_surrogate_key([
-            'employee_id',
-            'effective_start_date',
-            "'title_change'"
-        ]) }} as employee_event_id,
-
-        employee_id,
-        employee_history_id,
-
-        effective_start_date as event_timestamp,
-        cast(effective_start_date as date) as event_date,
-
-        'title_change' as event_type,
-
-        previous_title as previous_value,
-        title as new_value,
-
-        'title' as changed_attribute
-
-    from employee_changes
-
-    where coalesce(previous_title, 'unknown')
-        != coalesce(title, 'unknown')
-
-),
-
-division_transfer_events as (
-
-    select
-
-        {{ dbt_utils.generate_surrogate_key([
-            'employee_id',
-            'effective_start_date',
-            "'division_transfer'"
-        ]) }} as employee_event_id,
-
-        employee_id,
-        employee_history_id,
-
-        effective_start_date as event_timestamp,
-        cast(effective_start_date as date) as event_date,
-
-        'division_transfer' as event_type,
-
-        previous_division as previous_value,
-        division as new_value,
-
-        'division' as changed_attribute
-
-    from employee_changes
-
-    where coalesce(previous_division, 'unknown')
-        != coalesce(division, 'unknown')
-
-),
-
-department_change_events as (
-
-    select
-
-        {{ dbt_utils.generate_surrogate_key([
-            'employee_id',
-            'effective_start_date',
-            "'department_type_change'"
-        ]) }} as employee_event_id,
-
-        employee_id,
-        employee_history_id,
-
-        effective_start_date as event_timestamp,
-        cast(effective_start_date as date) as event_date,
-
-        'department_type_change' as event_type,
-
-        previous_department_type as previous_value,
-        department_type as new_value,
-
-        'department_type' as changed_attribute
-
-    from employee_changes
-
-    where coalesce(previous_department_type, 'unknown')
-        != coalesce(department_type, 'unknown')
-
-),
-
-supervisor_change_events as (
-
-    select
-
-        {{ dbt_utils.generate_surrogate_key([
-            'employee_id',
-            'effective_start_date',
-            "'supervisor_change'"
-        ]) }} as employee_event_id,
-
-        employee_id,
-        employee_history_id,
-
-        effective_start_date as event_timestamp,
-        cast(effective_start_date as date) as event_date,
-
-        'supervisor_change' as event_type,
-
-        previous_supervisor as previous_value,
-        supervisor as new_value,
-
-        'supervisor' as changed_attribute
-
-    from employee_changes
-
-    where coalesce(previous_supervisor, 'unknown')
-        != coalesce(supervisor, 'unknown')
-
-),
-
-final as (
-
-    select * from initial_hire_events
-
+    {% if not loop.last %}
     union all
+    {% endif %}
 
-    select * from employee_status_events
-
-    union all
-
-    select * from title_change_events
-
-    union all
-
-    select * from division_transfer_events
-
-    union all
-
-    select * from department_change_events
-
-    union all
-
-    select * from supervisor_change_events
+    {% endfor %}
 
 )
 
 select *
 
-from final
+from employee_attribute_changes
