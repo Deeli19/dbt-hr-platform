@@ -1,63 +1,97 @@
-name: dbt Production Deploy
+name: dbt Production Release
 
-# One-time code deployment. Source-data changes use dbt_prod_run.yml.
-# Runs against the reviewed main branch and uploads the production manifest
-# used for state comparison in pull-request Slim CI.
+# No push trigger: merging to main is NOT a production release.
+# Manually deploy an exact, reviewed commit from main.
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
+    inputs:
+      release_sha:
+        description: 'Full 40-character commit SHA to release (must be on main)'
+        required: true
+        type: string
+      full_build:
+        description: 'Explicit full build (bootstrap or incompatible migration)'
+        required: true
+        type: boolean
+        default: false
 
 permissions:
-  contents: read
+  contents: write  # Advances the production-release ref only on success.
+  actions: read     # Reads last successful production manifest artifact.
 
-# Both production workflows use this group to avoid concurrent warehouse writes.
+# Avoid simultaneous GitHub-triggered production writes.
+# Note: GitHub concurrency retains at most one pending workflow run.
 concurrency:
   group: hr-production-warehouse
   cancel-in-progress: false
 
 jobs:
-
-  dbt-prod:
+  dbt-release:
     if: github.ref == 'refs/heads/main'
-
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    environment: production-release  # Configure required reviewers in GitHub Settings.
 
     steps:
-
-      - uses: actions/checkout@v4
+      - name: Checkout main with full history
+        uses: actions/checkout@v4
         with:
           ref: main
+          fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - name: Validate requested release and checkout exact commit
+        id: release
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          set -euo pipefail
+          sha="${RELEASE_SHA,,}"
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::release_sha must be a full 40-character commit SHA"
+            exit 1
+          fi
+          git cat-file -e "${sha}^{commit}"
+          if ! git merge-base --is-ancestor "$sha" origin/main; then
+            echo "::error::Requested SHA is not reachable from main"
+            exit 1
+          fi
+
+          # Keep releases forward-only. Rollbacks should be new revert commits.
+          if git show-ref --verify --quiet refs/remotes/origin/production-release; then
+            previous="$(git rev-parse refs/remotes/origin/production-release)"
+            if ! git merge-base --is-ancestor "$previous" "$sha"; then
+              echo "::error::Release SHA predates the current production-release ref"
+              exit 1
+            fi
+          fi
+
+          echo "release_sha=$sha" >> "$GITHUB_OUTPUT"
+          git checkout --detach "$sha"
+          test "$(git rev-parse HEAD)" = "$sha"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-
-      - name: dbt deps
-        run: |
           dbt deps
 
-      - name: Setup Production Profile
+      - name: Set up production profile
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p /home/runner/.dbt
-
           printf '%s' "${{ secrets.PROD_PRIVATE_KEY_PATH }}" > /home/runner/.dbt/rsa_key.p8
-
           chmod 600 /home/runner/.dbt/rsa_key.p8
-
           cat > /home/runner/.dbt/profiles.yml <<EOF
           default:
             target: prod
-
             outputs:
-
               prod:
                 type: snowflake
                 account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
@@ -70,24 +104,90 @@ jobs:
                 private_key_path: /home/runner/.dbt/rsa_key.p8
                 private_key_passphrase: "${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}"
           EOF
+          chmod 600 /home/runner/.dbt/profiles.yml
 
-      - name: Validate connection
+      - name: Validate production connection
+        run: dbt debug --target prod
+
+      - name: Fetch latest successful production manifest
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          github_token: ${{ github.token }}
+          workflow: dbt_prod_deploy.yml
+          branch: main
+          workflow_conclusion: success
+          name: manifest-artifact
+          path: state/
+          search_artifacts: true
+          check_artifacts: true
+          if_no_artifact_found: warn
+
+      - name: Validate previous release state
+        shell: bash
+        env:
+          FULL_BUILD: ${{ inputs.full_build }}
         run: |
-          dbt debug --target prod
+          set -euo pipefail
+          previous="$(git rev-parse --verify refs/remotes/origin/production-release 2>/dev/null || true)"
+          if [[ -n "$previous" && "$FULL_BUILD" != "true" ]]; then
+            if [[ ! -f state/manifest.json || ! -f state/deployed_sha.txt ]]; then
+              echo "::error::Previous release manifest/marker is missing. Use explicit full_build."
+              exit 1
+            fi
+            if [[ "$(tr -d '[:space:]' < state/deployed_sha.txt)" != "$previous" ]]; then
+              echo "::error::Previous manifest does not match current deployed commit."
+              exit 1
+            fi
+          elif [[ ! -f state/manifest.json && "$FULL_BUILD" != "true" ]]; then
+            echo "::error::No previous manifest. Bootstrap with full_build=true."
+            exit 1
+          fi
 
-      # For dbt Core, deploying model code requires executing it in the warehouse.
-      # This is a one-off production build on approved code changes; the
-      # separate scheduled workflow keeps business data current afterward.
-      - name: Run production build
+      - name: Build modified models and their descendants (or explicit full build)
+        shell: bash
+        env:
+          FULL_BUILD: ${{ inputs.full_build }}
         run: |
-          dbt build --target prod
+          set -euo pipefail
+          if [[ "$FULL_BUILD" == "true" ]]; then
+            echo "Explicit full production build requested"
+            dbt build --target prod
+          else
+            dbt ls --target prod --select state:modified+ --state state/
+            dbt build --target prod --select state:modified+ --state state/
+          fi
 
-      - name: Compile
-        run: dbt compile --target prod
+      - name: Prepare validated manifest and deployed revision
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+          test -s target/manifest.json
+          mkdir -p release_artifact
+          cp target/manifest.json release_artifact/manifest.json
+          printf '%s\n' "$RELEASE_SHA" > release_artifact/deployed_sha.txt
 
-      - name: Upload manifest
+      - name: Publish release manifest for future Slim CI
         uses: actions/upload-artifact@v4
-
         with:
           name: manifest-artifact
-          path: target/manifest.json
+          path: release_artifact/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Advance production-release ref only after build and tests passed
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.release.outputs.release_sha }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/$GH_REPO/git/ref/heads/production-release" >/dev/null 2>&1; then
+            gh api --method PATCH "repos/$GH_REPO/git/refs/heads/production-release" \
+              -f sha="$RELEASE_SHA" -F force=false >/dev/null
+          else
+            gh api --method POST "repos/$GH_REPO/git/refs" \
+              -f ref='refs/heads/production-release' -f sha="$RELEASE_SHA" >/dev/null
+          fi
