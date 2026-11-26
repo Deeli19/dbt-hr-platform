@@ -7,6 +7,7 @@
     cluster_by=['application_date'],
     merge_update_columns=[
         'application_status',
+        'hired_flag',
         'dbt_updated_at'
         ]
     )
