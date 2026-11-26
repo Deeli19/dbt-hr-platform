@@ -1,50 +1,107 @@
-# Engineering exercise: separate deployment from scheduled data refresh
+# Engineering exercise: controlled dbt releases and scheduled processing
 
-This change intentionally leaves CI as-is. It separates **code deployment**
-from **recurring source-data processing** in production, and adds a **safe
-Snowflake lab** demonstrating validate-before-publish.
+This PR separates CI, release deployment, and recurring data processing.
+It also provides a separate **CI-database candidate publication lab**.
 
 ## Pipeline responsibilities
 
-| Workflow | Trigger | Behavior |
+| Workflow | Trigger | Responsibility |
 | --- | --- | --- |
-| `.github/workflows/dbt_ci.yml` | PR against main | Compile and build modified nodes and their descendants in CI; test them. |
-| `.github/workflows/dbt_prod_deploy.yml` | Push to main or manual dispatch | Execute production dbt build on reviewed code and upload the manifest for Slim CI. |
-| `.github/workflows/dbt_prod_run.yml` | Monthly or manual dispatch | Execute dbt build with main's code to process source changes and run data tests; save run diagnostics. |
+| `.github/workflows/dbt_ci.yml` | PR against main | Compare code with last successful production manifest; build changed models and descendants in CI; run selected tests. |
+| `.github/workflows/dbt_prod_deploy.yml` | Manual workflow dispatch only | Release an exact, reviewed commit reachable from main; bootstrap or selectively build affected models; publish manifest; advance production-release ref on success. |
+| `.github/workflows/dbt_prod_run.yml` | Monthly or manual | Resolve production-release to the last successfully deployed SHA and run dbt build using *that exact code*, regardless of newer commits to main. |
 
-**Cadence:** Original monthly schedule is retained in the *scheduled run*
-workflow. Agree on business freshness SLAs before changing to daily/hourly.
+**Important:** A merge to `main` does not trigger a production dbt build.
+The original monthly schedule is retained for production processing. Choose a
+different frequency only after establishing a data-freshness requirement.
 
-**Execution warning:** This is a learning environment. Production deployment
-still uses `dbt build` to materialize changes because dbt Core is a
-transformation framework, not a binary deployment system. Every run may
-recompute tables and cost Snowflake credits. The workflow does not isolate
-production writes behind a candidate publication gate.
+## Initial release bootstrap — REQUIRED before scheduled processing
 
-**Serialization:** Both production workflows share the same GitHub Actions
-concurrency group and do not cancel running jobs. This helps avoid concurrent
-workflow writes, but is not a cross-system lock for dbt jobs run by other
-orchestrators or users.
+The scheduled workflow intentionally fails closed if there is no
+`production-release` ref. Once this PR is merged and reviewed:
 
-**Manifest:** Slim CI downloads the `manifest-artifact` from
-`dbt_prod_deploy.yml`. This remains available following a successful
-deployment. A failed deploy has no new success artifact. Note that normal
-pull-request Slim CI does *not* detect source-only changes; recurring
-processing and production tests are responsible for those.
+1. Choose the exact 40-character commit SHA on main you intend to release
+   (for example, `git rev-parse origin/main` in your local clone).
+2. In GitHub Actions, manually run **dbt Production Release** from `main`.
+3. Enter that exact `release_sha`. Set `full_build=true` for the first release.
+4. The job verifies the SHA is reachable from main, checks out that exact
+   commit, and runs a full production `dbt build`.
+5. After build success it uploads `manifest-artifact`, containing
+   `manifest.json` and `deployed_sha.txt`, and moves or creates
+   `refs/heads/production-release` pointing to the successfully built SHA.
+6. Only then can the scheduled workflow resolve and run the deployed revision.
 
-**Important operational limitations to discuss in interview:**
-- A GitHub Actions `push` workflow runs after merging code, not before; require
-  PR checks/review rules for merge safety. These are not configured by this PR.
-- Merging a change triggers a production build, not just copying artifacts.
-- The scheduled job follows the approved main branch, but a PR must not be
-  treated as deployed until its production job finishes successfully.
-- Consider production environment approvals, least-privilege service roles,
-  notifications, test gating, deployment recovery, and dbt model ownership.
-- Review the job/warehouse timeouts against actual warehouse workload.
-- Model-level tests usually run *after* materialization; a failed dbt test
-  does not automatically roll back previously committed model changes.
-- Current project includes archive-day-dependent models; the date-sensitive
-  data output needs its own cadence and test strategy if run frequency changes.
+**Operational prerequisites:** The GitHub Actions token needs permission to
+create/update the `production-release` branch; repository branch rules may
+restrict it. The deployment job references GitHub environment
+`production-release`; **configure required reviewers** in GitHub Settings
+before production use. The workflow definition alone does not enforce human
+approval unless environment protection is configured.
+
+## Subsequent releases — state-based selective production build
+
+1. Five engineers can merge reviewed PRs to main without triggering production.
+2. A release owner selects a specific 40-character commit already on main.
+3. The deployment fetches the latest successful manifest artifact **from the
+   production release workflow**, not from CI or a scheduled data run.
+4. The deployed revision marker in the downloaded artifact must match the
+   current `production-release` ref. If it is missing or stale, the
+   selective build fails closed. Use an explicitly approved full build if
+   recovery from missing state is required.
+5. The default release command is:
+
+   ```bash
+   dbt build --target prod --select state:modified+ --state state/
+   ```
+
+   This compares released dbt definitions with the previous successful
+   production manifest, and includes downstream dependencies and their
+   selected tests. Nonmodel resources, migrations, changed grants, snapshots,
+   or global configuration may require a broader or explicitly full run.
+6. After a successful build, the workflow uploads the new manifest and
+   updates the `production-release` ref. Scheduled runs always fetch that ref
+   and check out its exact commit SHA.
+
+The release ref is **forward-only** relative to the previously deployed
+commit. For a rollback, create and approve a new revert commit and release it;
+don't force-move the ref backward.
+
+### How this controls costs and team collaboration
+
+- Five merges do not create five full production builds.
+- A single release can bundle multiple approved changes, with affected-model
+  selection limiting unnecessary rebuilds.
+- Scheduled data updates execute a fixed, already released code revision,
+  not the moving `main` branch.
+- Both production workflows share a GitHub concurrency group with
+  `cancel-in-progress: false`. GitHub concurrency does not provide a durable
+  FIFO queue and may replace older pending runs. It does not coordinate
+  external orchestrators.
+
+### Caveats and further production hardening
+
+- A `dbt build` may materialize and commit an invalid model before a test
+  fails. This PR does NOT put production dbt output behind the candidate
+  publication gate in the lab.
+- GitHub Actions execution and an artifact upload are not atomic with a Git
+  ref update. If the build succeeds but advancing the ref fails, investigate
+  the partially materialized production state before retrying.
+- Artifact retention is 90 days. A stale or expired artifact requires an
+  explicitly approved full-build recovery; a persistent object-storage
+  manifest plus deployed revision metadata is preferable for long-lived
+  production environments.
+- A selective build only checks nodes selected by dbt's state selector.
+  Assess changed macros, indirect test selection, snapshots, seed updates,
+  schema migrations, contracts and global configuration during release
+  review. A full build may be appropriate for some changes.
+- Reviewers should configure branch protection / required CI, least-privilege
+  Snowflake roles, GitHub environment approvers, alerting and release
+  auditability. These controls are not all configured by this PR.
+- The scheduled job currently runs `dbt build --target prod`, which builds all
+  project resources and may be costlier than an intentionally scoped
+  processing DAG. This is a separate performance improvement.
+- The current HR project includes archive-day-sensitive models; the monthly
+  cadence and source freshness requirements must be reviewed independently.
 
 ## Candidate publication lab
 
