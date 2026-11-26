@@ -1,21 +1,28 @@
 name: dbt Production Deploy
 
+# One-time code deployment. Source-data changes use dbt_prod_run.yml.
+# Runs against the reviewed main branch and uploads the production manifest
+# used for state comparison in pull-request Slim CI.
 on:
-  schedule:
-    - cron: 0 0 1 * *
-  workflow_dispatch: 
-    inputs:
-      branch_name: 
-        description: 
-        required: true
-        default: 'main'
-        type: string
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Both production workflows use this group to avoid concurrent warehouse writes.
+concurrency:
+  group: hr-production-warehouse
+  cancel-in-progress: false
 
 jobs:
 
   dbt-prod:
 
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
 
@@ -64,6 +71,9 @@ jobs:
         run: |
           dbt debug --target prod
 
+      # For dbt Core, deploying model code requires executing it in the warehouse.
+      # This is a one-off production build on approved code changes; the
+      # separate scheduled workflow keeps business data current afterward.
       - name: Run production build
         run: |
           dbt build --target prod
