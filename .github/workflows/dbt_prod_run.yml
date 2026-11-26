@@ -20,11 +20,33 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout approved production code
+      - name: Resolve last successfully deployed revision
+        id: deployed
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          sha="$(gh api "repos/$GH_REPO/git/ref/heads/production-release" --jq '.object.sha')"
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::No valid production-release commit. Run the initial full release first."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout last successfully deployed code
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ steps.deployed.outputs.sha }}
           persist-credentials: false
+
+      - name: Confirm immutable runtime revision
+        env:
+          DEPLOYED_SHA: ${{ steps.deployed.outputs.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$DEPLOYED_SHA"
+          echo "Processing with production release $DEPLOYED_SHA"
 
       - name: Set up Python
         uses: actions/setup-python@v5
