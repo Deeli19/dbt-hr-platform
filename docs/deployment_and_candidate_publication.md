@@ -32,8 +32,10 @@ The scheduled workflow intentionally fails closed if there is no
 6. Only then can the scheduled workflow resolve and run the deployed revision.
 
 **Operational prerequisites:** The GitHub Actions token needs permission to
-create/update the `production-release` branch; repository branch rules may
-restrict it. The deployment job references GitHub environment
+create/update the `production-release` branch. Protect this branch/reference
+from direct human pushes and deletes, while explicitly allowing only the
+trusted release automation to advance it. Repository rules may otherwise
+block the automation or permit unreviewed code into scheduled processing. The deployment job references GitHub environment
 `production-release`; **configure required reviewers** in GitHub Settings
 before production use. The workflow definition alone does not enforce human
 approval unless environment protection is configured.
