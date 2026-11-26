@@ -1,0 +1,28 @@
+version: 2
+
+models:
+  - name: fct_recruitments
+    description: >
+      Current application state at one row per applicant_id, under the
+      source contract that applicant_id uniquely identifies an application.
+      Incremental runs compare source and target business attributes to
+      identify inserts and updates without relying on application_date.
+    columns:
+      - name: applicant_id
+        description: Source application identifier; must be stable and unique per application.
+        data_tests:
+          - not_null
+          - unique
+      - name: application_date
+        data_tests:
+          - not_null
+      - name: application_status
+        data_tests:
+          - not_null
+      - name: hired_flag
+        description: One for an Offered application; zero otherwise (current project rule).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
