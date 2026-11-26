@@ -1,0 +1,98 @@
+name: dbt Scheduled Production Processing
+
+# Data refresh, separate from deploying code changes.
+# Keep the existing monthly schedule until a freshness SLA is agreed.
+on:
+  schedule:
+    - cron: '0 0 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hr-production-warehouse
+  cancel-in-progress: false
+
+jobs:
+  dbt-prod-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Resolve last successfully deployed revision
+        id: deployed
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          sha="$(gh api "repos/$GH_REPO/git/ref/heads/production-release" --jq '.object.sha')"
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::No valid production-release commit. Run the initial full release first."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout last successfully deployed code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.deployed.outputs.sha }}
+          persist-credentials: false
+
+      - name: Confirm immutable runtime revision
+        env:
+          DEPLOYED_SHA: ${{ steps.deployed.outputs.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$DEPLOYED_SHA"
+          echo "Processing with production release $DEPLOYED_SHA"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          dbt deps
+
+      - name: Set up production profile
+        run: |
+          mkdir -p /home/runner/.dbt
+          printf '%s' "${{ secrets.PROD_PRIVATE_KEY_PATH }}" > /home/runner/.dbt/rsa_key.p8
+          chmod 600 /home/runner/.dbt/rsa_key.p8
+          cat > /home/runner/.dbt/profiles.yml <<EOF
+          default:
+            target: prod
+            outputs:
+              prod:
+                type: snowflake
+                account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+                user: ${{ secrets.PROD_USER }}
+                role: ${{ secrets.PROD_ROLE }}
+                warehouse: PROD_WH
+                database: PRODUCTION
+                schema: HR
+                threads: 8
+                private_key_path: /home/runner/.dbt/rsa_key.p8
+                private_key_passphrase: "${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}"
+          EOF
+          chmod 600 /home/runner/.dbt/profiles.yml
+
+      - name: Verify production connection
+        run: dbt debug --target prod
+
+      - name: Process source data and run dbt data tests
+        run: dbt build --target prod
+
+      - name: Store run diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scheduled-dbt-run-artifacts
+          path: |
+            target/run_results.json
+            logs/dbt.log
+          if-no-files-found: ignore
