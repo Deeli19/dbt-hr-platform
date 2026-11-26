@@ -129,6 +129,10 @@ jobs:
         run: |
           set -euo pipefail
           previous="$(git rev-parse --verify refs/remotes/origin/production-release 2>/dev/null || true)"
+          if [[ -z "$previous" && "$FULL_BUILD" != "true" ]]; then
+            echo "::error::No production-release ref. Bootstrap with full_build=true."
+            exit 1
+          fi
           if [[ -n "$previous" && "$FULL_BUILD" != "true" ]]; then
             if [[ ! -f state/manifest.json || ! -f state/deployed_sha.txt ]]; then
               echo "::error::Previous release manifest/marker is missing. Use explicit full_build."
@@ -138,9 +142,6 @@ jobs:
               echo "::error::Previous manifest does not match current deployed commit."
               exit 1
             fi
-          elif [[ ! -f state/manifest.json && "$FULL_BUILD" != "true" ]]; then
-            echo "::error::No previous manifest. Bootstrap with full_build=true."
-            exit 1
           fi
 
       - name: Build modified models and their descendants (or explicit full build)
